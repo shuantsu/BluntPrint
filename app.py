@@ -209,7 +209,7 @@ class BlueprintConverter:
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Shapez Blueprint Converter")
+        self.root.title("BluntPrint")
         self.converter = BlueprintConverter()
 
         self.setup_ui()
