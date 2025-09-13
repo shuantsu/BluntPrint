@@ -81,7 +81,8 @@ class BlueprintConverter:
                                 node["C-decoded"] = "null"
                             elif raw == b'\x02':
                                 node["C-decoded"] = "conflict"
-                            # Number decoding (type 0x03, 4 data bytes)
+                            elif raw == b'\x05':
+                                node["C-decoded"] = "1"
                             elif len(raw) == 5 and raw[0] == 0x03:
                                 num_value = int.from_bytes(raw[1:], 'little', signed=True)
                                 node["C-decoded"] = str(num_value)
@@ -220,7 +221,13 @@ def index():
         # Prioritize JSON input if it's provided
         if json_input:
             try:
+                # {{change 1}}
+                print("Received JSON input:", json_input)
+                # {{change 2}}
                 converter.decoded_bp = json.loads(json_input)
+                # {{change 3}}
+                print("Parsed JSON:", converter.decoded_bp)
+                # {{change 4}}
                 decoded_data = converter.decoded_bp
                 converter.encode_c_fields() # call the encode to avoid conflicts between c and c-decoded values
                 new_game_string = converter.encode_blueprint()

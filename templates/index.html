@@ -275,8 +275,15 @@
     });
 
     // This function will be called when the "Encode to Game String" button is clicked
-    window.updateJsonBeforeSubmit = function() {
-      jsonOutput.value = JSON.stringify(data, null, 2);
+      // This function will be called when the "Encode to Game String" button is clicked
+      window.updateJsonBeforeSubmit = function() {
+      try {
+        data = JSON.parse(jsonOutput.value); // Update the data variable
+      } catch (e) {
+        alert("Invalid JSON: " + e);
+        return;
+      }
+      jsonOutput.value = JSON.stringify(data, null, 2); // Update the textarea with the latest JSON
     }
 
   }
