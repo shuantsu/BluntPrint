@@ -50,8 +50,16 @@ class BlueprintConverter:
                     try:
                         raw = base64.b64decode(b64, validate=False)
                         
+                        # Handle ButtonDefaultInternalVariant with specific 'on'/'off' states
+                        if node.get("T") == "ButtonDefaultInternalVariant":
+                            if raw == b'\x01':
+                                node["C-decoded"] = "on"
+                            elif raw == b'\x00':
+                                node["C-decoded"] = "off"
+                            else:
+                                node["C-decoded"] = f"[unknown button state: {raw.hex()}]"
                         # Handle LogicGateCompareInternalVariant with a specific mapping
-                        if node.get("T") == "LogicGateCompareInternalVariant" and len(raw) == 1:
+                        elif node.get("T") == "LogicGateCompareInternalVariant" and len(raw) == 1:
                             # Map the single byte to the correct operator string
                             op_map = {
                                 1: "==", 2: ">=", 3: ">", 4: "<", 5: "<=", 6: "!="
@@ -64,8 +72,6 @@ class BlueprintConverter:
                             if len(raw) >= 2 and raw[1] == 0x00:
                                 string_part = raw[2:].decode("utf-8")
                                 node["C-decoded"] = string_part
-                                # Store the prefix for re-encoding
-                                node["C-raw-prefix"] = base64.b64encode(raw[:2]).decode("utf-8")
                             else:
                                 node["C-decoded"] = f"[decoding error: unexpected label format]"
                         # Handle other constant signals
@@ -120,8 +126,14 @@ class BlueprintConverter:
                     decoded_value = node["C-decoded"]
                     new_c_value = None
                     
+                    # Handle ButtonDefaultInternalVariant
+                    if node.get("T") == "ButtonDefaultInternalVariant":
+                        if decoded_value == "on":
+                            new_c_value = base64.b64encode(b'\x01').decode("utf-8")
+                        elif decoded_value == "off":
+                            new_c_value = base64.b64encode(b'\x00').decode("utf-8")
                     # Handle LogicGateCompareInternalVariant first
-                    if node.get("T") == "LogicGateCompareInternalVariant":
+                    elif node.get("T") == "LogicGateCompareInternalVariant":
                         # Map the operator string to the correct byte
                         op_map = {
                             "==": 1, ">=": 2, ">": 3, "<": 4, "<=": 5, "!=": 6
@@ -171,8 +183,6 @@ class BlueprintConverter:
                     if new_c_value:
                         node["C"] = new_c_value
                         del node["C-decoded"]
-                        if "C-raw-prefix" in node:
-                            del node["C-raw-prefix"]
                 
                 for k, v in list(node.items()):
                     process_node(v)
