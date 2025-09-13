@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Canvas Example</title>
+<style>
+  body { margin: 0; display:flex;}
+  body > div {
+    flex: 1;
+  }
+  canvas { background: #eee; }
+  #editFields {
+    display: none;
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: white;
+    border: 1px solid black;
+    padding: 5px;
+    z-index: 1000;
+  }
+  .edit-field {
+    display: block;
+    margin-bottom: 5px;
+  }
+  #overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: none;
+    z-index: 999;
+  }
+</style>
+</head>
+<body>
+<div>
+    <h1>BluntPrint</h1>
+    <form method="post" action="/">
+        <label for="game_string">Game String Input:</label><br>
+        <textarea id="game_string" name="game_string" rows="5" cols="80">{{ game_string }}</textarea><br>
+        <button type="submit">Decode to JSON &amp; Render</button>
+    </form>
+
+    <form method="post" action="/" id="encodeForm">
+        <label for="json_output">JSON Output (Editable):</label><br>
+        <textarea id="json_output" name="json_output" rows="20" cols="80">{{ json_output }}</textarea><br>
+        <input type="hidden" name="game_string" value="{{ game_string }}">
+        <button type="submit" onclick="updateJsonBeforeSubmit()">Encode to Game String ⬆</button>
+    </form>
+
+    <p>Status: {{ status }}</p>
+</div>
+<div>
+    <canvas id="myCanvas" width="500" height="500"></canvas>
+    <div id="editFields">
+        <label class="edit-field">X: <input type="number" id="editX"></label>
+        <label class="edit-field">Y: <input type="number" id="editY"></label>
+        <label class="edit-field">R: <input type="number" id="editR"></label>
+        <label class="edit-field">C-decoded: <input type="text" id="editC"></label>
+        <label class="edit-field">L: <input type="number" id="editL"></label>
+        <button onclick="applyChanges()">Apply</button>
+    </div>
+    <div id="overlay"></div>
+</div>
+
+<script>
+  let data = {{ decoded_data|tojson }};
+
+  const canvas = document.getElementById('myCanvas');
+  const ctx = canvas.getContext('2d');
+  const jsonOutput = document.getElementById('json_output');
+  const encodeForm = document.getElementById('encodeForm');
+  const editFieldsDiv = document.getElementById('editFields');
+  const overlayDiv = document.getElementById('overlay');
+
+  const editXInput = document.getElementById('editX');
+  const editYInput = document.getElementById('editY');
+  const editRInput = document.getElementById('editR');
+  const editCInput = document.getElementById('editC');
+  const editLInput = document.getElementById('editL');
+
+  let visibleLayers = new Set(); // Store visible layers
+
+  if (data) {
+
+     // Initially show all layers
+    const uniqueLayers = [...new Set(data.BP.Entries.map(entry => entry.L || 0))];
+    uniqueLayers.forEach(layer => visibleLayers.add(layer));
+
+    const uniqueTs = [...new Set(data.BP.Entries.map(entry => entry.T))];
+    const colors = {};
+    uniqueTs.forEach((t, i) => {
+      colors[t] = `hsl(${i * 360 / uniqueTs.length}, 70%, 60%)`;
+    });
+
+    let selectedEntry = null;
+
+    function drawText(ctx, text, x, y, maxWidth) {
+      const words = text.split(' ');
+      let line = '';
+      let lineHeight = 12;
+      let currentY = y;
+
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = ctx.measureText(testLine);
+        const testWidth = metrics.width;
+        if (testWidth > maxWidth && n > 0) {
+          ctx.fillText(line, x, currentY);
+          line = words[n] + ' ';
+          currentY += lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      ctx.fillText(line, x, currentY);
+    }
+
+    function getLayerEntries(layer) {
+        return data.BP.Entries.filter(entry => (entry.L || 0) === layer);
+    }
+
+    function drawCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        //Get all layers
+        const uniqueLayers = [...new Set(data.BP.Entries.map(entry => entry.L || 0))];
+        uniqueLayers.sort((a, b) => a - b);
+
+        uniqueLayers.forEach(layer => {
+            if (visibleLayers.has(layer)) {
+                const entries = getLayerEntries(layer);
+
+                entries.forEach(entry => {
+                    const x = (entry.X || 0) * 50 + 250 + layer * 5; // Add slight offset
+                    const y = (entry.Y || 0) * 50 + 250 - layer * 5; // Add slight offset
+
+                    const t = entry.T;
+
+                    ctx.fillStyle = colors[t];
+                    ctx.fillRect(x, y, 40, 40);
+
+                    ctx.strokeStyle = 'black'; // Add border
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, 40, 40);
+
+                    ctx.fillStyle = 'black';
+                    ctx.font = '10px Arial';
+                    ctx.textAlign = 'center';
+
+                    const text = entry['C-decoded'] || '';
+                    drawText(ctx, text, x + 20, y + 15, 35);
+                });
+            }
+        });
+                //Draw the Layer Controls
+                drawLayerControls();
+    }
+        function drawLayerControls() {
+            const uniqueLayers = [...new Set(data.BP.Entries.map(entry => entry.L || 0))];
+            uniqueLayers.sort((a, b) => a - b);
+
+            let startX = 10;
+            let startY = canvas.height - 30;
+
+            uniqueLayers.forEach(layer => {
+                ctx.fillStyle = visibleLayers.has(layer) ? 'yellow' : 'white';
+                ctx.fillRect(startX, startY, 20, 20);
+                ctx.strokeRect(startX, startY, 20, 20);
+
+                ctx.fillStyle = 'black';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(layer, startX + 10, startY + 15);
+
+                startX += 30;
+            });
+        }
+
+    canvas.addEventListener('click', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+
+      //Check if click is on layer controls
+      const uniqueLayers = [...new Set(data.BP.Entries.map(entry => entry.L || 0))];
+        uniqueLayers.sort((a, b) => a - b);
+        let startX = 10;
+        let startY = canvas.height - 30;
+        for (const layer of uniqueLayers) {
+            if (clickX >= startX && clickX <= startX + 20 && clickY >= startY && clickY <= startY + 20) {
+                if (visibleLayers.has(layer)) {
+                    visibleLayers.delete(layer);
+                } else {
+                    visibleLayers.add(layer);
+                }
+                drawCanvas();
+                return; // Exit to avoid clicking elements
+            }
+            startX += 30;
+        }
+
+        let clickedEntry = null; // Keep track of the entry that was clicked (if any)
+        // Iterate through entries in reverse layer order so we click the top-most
+
+        const layers = [...new Set(data.BP.Entries.map(entry => entry.L || 0))].sort((a, b) => b - a);
+        for (const layer of layers) {
+            if (!visibleLayers.has(layer)) continue; // Skip hidden layers
+
+            const entries = getLayerEntries(layer);
+            for (const entry of entries) {
+                const x = (entry.X || 0) * 50 + 250 + (entry.L || 0) * 5; // Add slight offset
+                const y = (entry.Y || 0) * 50 + 250 - (entry.L || 0) * 5; // Add slight offset
+
+                if (clickX >= x && clickX <= x + 40 && clickY >= y && clickY <= y + 40) {
+                    clickedEntry = entry;
+                    break; // Exit: Only select the topmost entry
+                }
+            }
+            if (clickedEntry) break; // If an entry was clicked, don't check other layers
+        }
+        if (clickedEntry) {
+
+            selectedEntry = clickedEntry
+                        // Populate the edit fields
+            editXInput.value = selectedEntry.X || '';
+            editYInput.value = selectedEntry.Y || '';
+            editRInput.value = selectedEntry.R || '';
+            editCInput.value = selectedEntry['C-decoded'] || '';
+            editLInput.value = selectedEntry.L || ''; // Populate layer
+
+            // Show the edit fields and overlay
+            editFieldsDiv.style.display = 'block';
+            editFieldsDiv.style.left = `${event.clientX}px`;
+            editFieldsDiv.style.top = `${event.clientY}px`;
+            overlayDiv.style.display = 'block';
+
+        }
+    });
+
+    // Apply Changes Function
+    window.applyChanges = function() {
+        if (selectedEntry) {
+            selectedEntry.X = editXInput.value === '' ? null : parseFloat(editXInput.value);
+            selectedEntry.Y = editYInput.value === '' ? null : parseFloat(editYInput.value);
+            selectedEntry.R = editRInput.value === '' ? null : parseFloat(editRInput.value);
+            selectedEntry['C-decoded'] = editCInput.value;
+            selectedEntry.L = editLInput.value === '' ? null : parseInt(editLInput.value);
+
+            // Update the C value as well (Base64 encode)
+            selectedEntry.C = btoa(editCInput.value);
+
+            // Hide the edit fields and overlay
+            editFieldsDiv.style.display = 'none';
+            overlayDiv.style.display = 'none';
+
+            // Redraw the canvas
+            drawCanvas();
+
+
+
+            // Update the jsonOutput textarea
+            jsonOutput.value = JSON.stringify(data, null, 2);
+
+            selectedEntry = null;
+        }
+    };
+    //Add a way to close the modal if click outside of the canvas
+    overlayDiv.addEventListener('click', function() {
+        editFieldsDiv.style.display = 'none';
+        overlayDiv.style.display = 'none';
+        selectedEntry = null;
+    });
+
+    // This function will be called when the "Encode to Game String" button is clicked
+    window.updateJsonBeforeSubmit = function() {
+      jsonOutput.value = JSON.stringify(data, null, 2);
+    }
+
+  }
+        if (data) {
+        // Initially show all layers
+        const uniqueLayers = [...new Set(data.BP.Entries.map(entry => entry.L || 0))];
+        uniqueLayers.forEach(layer => visibleLayers.add(layer));
+        drawCanvas();
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Canvas Example</title>
+<style>
+  body { margin: 0; display:flex;}
+  body > div {
+    flex: 1;
+  }
+  canvas { background: #eee; }
+  #inputController {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: none; /* Initially hidden */
+  }
+</style>
+</head>
+<body>
+<div>
+    <h1>BluntPrint</h1>
+    <form method="post" action="/">
+        <label for="game_string">Game String Input:</label><br>
+        <textarea id="game_string" name="game_string" rows="5" cols="80">{{ game_string }}</textarea><br>
+        <button type="submit">Decode to JSON &amp; Render</button>
+    </form>
+
+    <form method="post" action="/" id="encodeForm">
+        <label for="json_output">JSON Output (Editable):</label><br>
+        <textarea id="json_output" name="json_output" rows="20" cols="80">{{ json_output }}</textarea><br>
+        <input type="hidden" name="game_string" value="{{ game_string }}">
+        <button type="submit" onclick="updateJsonBeforeSubmit()">Encode to Game String ⬆</button>
+    </form>
+
+    <p>Status: {{ status }}</p>
+</div>
+<div>
+    <canvas id="myCanvas" width="500" height="500"></canvas>
+<input type="text" id="inputController">
+</div>
+
+<script>
+  let data = {{ decoded_data|tojson }};
+
+  const canvas = document.getElementById('myCanvas');
+  const ctx = canvas.getContext('2d');
+  const inputController = document.getElementById('inputController');
+  const jsonOutput = document.getElementById('json_output');
+  const encodeForm = document.getElementById('encodeForm');
+
+  if (data) {
+
+    const uniqueTs = [...new Set(data.BP.Entries.map(entry => entry.T))];
+    const colors = {};
+    uniqueTs.forEach((t, i) => {
+      colors[t] = `hsl(${i * 360 / uniqueTs.length}, 70%, 60%)`;
+    });
+
+    let selectedEntry = null;
+
+    function drawText(ctx, text, x, y, maxWidth) {
+      const words = text.split(' ');
+      let line = '';
+      let lineHeight = 12;
+      let currentY = y;
+
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = ctx.measureText(testLine);
+        const testWidth = metrics.width;
+        if (testWidth > maxWidth && n > 0) {
+          ctx.fillText(line, x, currentY);
+          line = words[n] + ' ';
+          currentY += lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      ctx.fillText(line, x, currentY);
+    }
+
+
+    function drawCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      data.BP.Entries.forEach(entry => {
+        const x = (entry.X || 0) * 50 + 250;
+        const y = (entry.Y || 0) * 50 + 250;
+        const t = entry.T;
+
+        ctx.fillStyle = colors[t];
+        ctx.fillRect(x, y, 40, 40);
+
+        ctx.fillStyle = 'black';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+
+        const text = entry['C-decoded'] || '';
+        drawText(ctx, text, x + 20, y + 15, 35);
+      });
+    }
+
+    drawCanvas();
+
+    canvas.addEventListener('click', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+
+      data.BP.Entries.forEach(entry => {
+        const x = (entry.X || 0) * 50 + 250;
+        const y = (entry.Y || 0) * 50 + 250;
+
+        if (clickX >= x && clickX <= x + 40 && clickY >= y && clickY <= y + 40) {
+          selectedEntry = entry;
+          inputController.style.display = 'block';
+          inputController.style.left = `${event.clientX}px`;
+          inputController.style.top = `${event.clientY}px`;
+          inputController.value = entry['C-decoded'] || '';
+          inputController.focus();
+        }
+      });
+    });
+
+    inputController.addEventListener('blur', () => {
+      if (selectedEntry) {
+        const newValue = inputController.value;
+        selectedEntry['C-decoded'] = newValue;
+        selectedEntry.C = btoa(newValue); // Update the C value as well
+
+        inputController.style.display = 'none';
+        drawCanvas();
+
+        jsonOutput.value = JSON.stringify(data, null, 2);
+        selectedEntry = null;
+      }
+    });
+
+    inputController.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        inputController.blur();
+      }
+    });
+
+    // This function will be called when the "Encode to Game String" button is clicked
+    window.updateJsonBeforeSubmit = function() {
+      jsonOutput.value = JSON.stringify(data, null, 2); // Update the textarea with the latest JSON
+    }
+  }
+</script>
+
+</body>
+</html>
